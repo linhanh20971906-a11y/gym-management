@@ -1,0 +1,38 @@
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gym-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: gym_management
+      MYSQL_USER: gym_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - gym-network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gym-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    depends_on:
+      - mysql
+    networks:
+      - gym-network
+
+volumes:
+  mysql_data:
+
+networks:
+  gym-network:
+    driver: bridge
+
