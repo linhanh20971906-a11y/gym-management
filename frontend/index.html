@@ -1,0 +1,452 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gym Management - Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    /* Kiểm tra đăng nhập trước khi hiển thị trang */
+    html:not(.auth-verified) body {
+      visibility: hidden;
+    }
+
+    .admin-header {
+      position: relative;
+      padding: 25px 20px;
+      text-align: center;
+    }
+
+    .admin-header h1 {
+      margin: 0 0 12px;
+    }
+
+    .admin-header p {
+      margin: 0;
+    }
+
+    .admin-actions {
+      position: absolute;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-email {
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .logout-btn {
+      padding: 10px 16px;
+      border: 1px solid rgba(255,255,255,.6);
+      border-radius: 8px;
+      background: #dc2626;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .logout-btn:hover {
+      background: #b91c1c;
+    }
+
+    @media (max-width: 768px) {
+      .admin-header {
+        padding-bottom: 85px;
+      }
+
+      .admin-actions {
+        top: auto;
+        bottom: 15px;
+        right: 50%;
+        transform: translateX(50%);
+      }
+
+      .admin-email {
+        display: none;
+      }
+    }
+  </style>
+
+  <script>
+    // Chỉ cho phép hiển thị Dashboard khi JWT hợp lệ.
+    (async function checkAdminAuthentication() {
+      const token = sessionStorage.getItem("gym_access_token");
+
+      function redirectToLogin() {
+        sessionStorage.removeItem("gym_access_token");
+        window.location.replace("./login.html");
+      }
+
+      if (!token) {
+        redirectToLogin();
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          "http://localhost:5000/api/auth/me",
+          {
+            headers: {
+              Authorization: "Bearer " + token
+            }
+          }
+        );
+
+        if (!response.ok) {
+          redirectToLogin();
+          return;
+        }
+
+        const result = await response.json();
+
+        if (
+          result.status !== "success" ||
+          result.user?.role !== "admin"
+        ) {
+          redirectToLogin();
+          return;
+        }
+
+        document.documentElement.classList.add(
+          "auth-verified"
+        );
+
+        document.addEventListener("DOMContentLoaded", () => {
+          const emailElement =
+            document.getElementById("adminEmail");
+
+          if (emailElement) {
+            emailElement.textContent = result.user.email;
+          }
+        });
+      } catch (error) {
+        console.error("Lỗi kiểm tra đăng nhập:", error);
+        redirectToLogin();
+      }
+    })();
+
+    function logoutAdmin() {
+      sessionStorage.removeItem("gym_access_token");
+      window.location.replace("./login.html");
+    }
+  </script>
+</head>
+
+<body>
+  <header class="admin-header">
+    <h1>GYM MANAGEMENT</h1>
+    <p>Hệ thống quản lý phòng tập Gym</p>
+
+    <div class="admin-actions">
+      <span id="adminEmail" class="admin-email">
+        Admin
+      </span>
+
+      <button
+        type="button"
+        class="logout-btn"
+        onclick="logoutAdmin()"
+      >
+        Đăng xuất
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- DASHBOARD TỔNG QUAN -->
+    <section class="dashboard-section">
+      <h2>Dashboard - Tổng quan hệ thống</h2>
+
+      <p class="dashboard-subtitle">
+        Thống kê dữ liệu quản lý phòng tập Gym
+      </p>
+
+      <div class="stats-grid">
+
+        <div class="stat-card stat-members">
+          <div class="stat-icon">👥</div>
+          <p>Tổng hội viên</p>
+          <h3 id="totalMembers">0</h3>
+        </div>
+
+        <div class="stat-card stat-trainers">
+          <div class="stat-icon">🏋️</div>
+          <p>Tổng huấn luyện viên</p>
+          <h3 id="totalTrainers">0</h3>
+        </div>
+
+        <div class="stat-card stat-plans">
+          <div class="stat-icon">📋</div>
+          <p>Tổng gói tập</p>
+          <h3 id="totalPlans">0</h3>
+        </div>
+
+        <div class="stat-card stat-schedules">
+          <div class="stat-icon">📅</div>
+          <p>Tổng lịch tập</p>
+          <h3 id="totalSchedules">0</h3>
+        </div>
+
+      </div>
+
+      <div class="dashboard-chart">
+        <h3>Thống kê trạng thái lịch tập</h3>
+        <canvas id="scheduleChart"></canvas>
+      </div>
+
+      <p
+        id="dashboardError"
+        class="dashboard-error"
+        hidden
+      ></p>
+    </section>
+
+    <!-- QUẢN LÝ HỘI VIÊN -->
+    <section>
+      <h2>Quản lý hội viên</h2>
+
+      <div class="search-box">
+        <input
+          type="text"
+          id="searchMember"
+          placeholder="Tìm hội viên theo tên, SĐT hoặc email..."
+        >
+      </div>
+
+      <button id="addMemberBtn" type="button">
+        + Thêm hội viên
+      </button>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Họ tên</th>
+              <th>Số điện thoại</th>
+              <th>Email</th>
+              <th>Trạng thái</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+
+          <tbody id="memberTableBody">
+            <tr>
+              <td colspan="6">
+                Đang tải hội viên...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- QUẢN LÝ GÓI TẬP -->
+    <section class="plans-section">
+      <h2>Danh sách gói tập Gym</h2>
+
+      <div id="plansContainer" class="plans-container">
+        Đang tải gói tập...
+      </div>
+    </section>
+
+    <!-- QUẢN LÝ HUẤN LUYỆN VIÊN -->
+    <section class="trainers-section">
+      <h2>Quản lý huấn luyện viên (PT)</h2>
+
+      <button id="addTrainerBtn" type="button">
+        + Thêm huấn luyện viên
+      </button>
+
+      <div id="trainerList" class="trainers-container">
+        Đang tải huấn luyện viên...
+      </div>
+    </section>
+
+    <!-- QUẢN LÝ LỊCH TẬP -->
+    <section class="schedules-section">
+
+      <div class="section-heading">
+        <div class="schedule-header">
+
+          <h2>Quản lý lịch tập Gym</h2>
+
+          <div class="filter-box">
+            <select id="filterScheduleStatus">
+              <option value="all">Tất cả lịch tập</option>
+              <option value="scheduled">Đã lên lịch</option>
+              <option value="completed">Đã hoàn thành</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+          </div>
+
+          <button id="addScheduleBtn" type="button">
+            + Thêm lịch tập
+          </button>
+
+        </div>
+      </div>
+
+      <div
+        id="scheduleMessage"
+        class="message"
+        role="status"
+        aria-live="polite"
+        hidden
+      ></div>
+
+      <!-- FORM THÊM / SỬA LỊCH TẬP -->
+      <div id="scheduleFormPanel" class="form-panel" hidden>
+
+        <h3 id="scheduleFormTitle">
+          Thêm lịch tập mới
+        </h3>
+
+        <form id="scheduleForm">
+          <div class="form-grid">
+
+            <div class="form-field">
+              <label for="scheduleMember">
+                Hội viên *
+              </label>
+
+              <select id="scheduleMember" required>
+                <option value="">
+                  -- Chọn hội viên --
+                </option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="scheduleTrainer">
+                Huấn luyện viên *
+              </label>
+
+              <select id="scheduleTrainer" required>
+                <option value="">
+                  -- Chọn PT --
+                </option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="scheduleDate">
+                Ngày và giờ tập *
+              </label>
+
+              <input
+                id="scheduleDate"
+                type="datetime-local"
+                required
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="scheduleDuration">
+                Thời lượng (phút) *
+              </label>
+
+              <input
+                id="scheduleDuration"
+                type="number"
+                min="1"
+                step="1"
+                value="60"
+                required
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="scheduleStatus">
+                Trạng thái *
+              </label>
+
+              <select id="scheduleStatus" required>
+                <option value="scheduled">
+                  Đã lên lịch
+                </option>
+
+                <option value="completed">
+                  Đã hoàn thành
+                </option>
+
+                <option value="cancelled">
+                  Đã hủy
+                </option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="scheduleNotes">
+                Ghi chú
+              </label>
+
+              <textarea
+                id="scheduleNotes"
+                rows="3"
+                placeholder="Ví dụ: Tập Yoga buổi sáng"
+              ></textarea>
+            </div>
+
+          </div>
+
+          <div class="form-actions">
+            <button
+              id="saveScheduleBtn"
+              type="submit"
+            >
+              Lưu lịch tập
+            </button>
+
+            <button
+              id="cancelScheduleBtn"
+              type="button"
+              class="btn-secondary"
+            >
+              Hủy
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- BẢNG LỊCH TẬP -->
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Hội viên</th>
+              <th>Huấn luyện viên</th>
+              <th>Ngày giờ tập</th>
+              <th>Thời lượng</th>
+              <th>Trạng thái</th>
+              <th>Ghi chú</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+
+          <tbody id="scheduleTableBody">
+            <tr>
+              <td colspan="8">
+                Đang tải lịch tập...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

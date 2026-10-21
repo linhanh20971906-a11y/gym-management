@@ -1,5 +1,20 @@
+# Dependencies
 node_modules/
+**/node_modules/
+
+# Environment variables
 .env
 .env.*
 !.env.example
+
+# Logs
 *.log
+error.txt
+
+# Backup files
+*.backup.js
+*.before-jwt.js
+
+# System files
+.DS_Store
+Thumbs.db
