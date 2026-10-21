@@ -1,6 +1,5 @@
 
-const API_BASE = "http://localhost:5000/api";
-
+const API_BASE = "/api";
 const MEMBERS_API = `${API_BASE}/members`;
 const PLANS_API = `${API_BASE}/plans`;
 const TRAINERS_API = `${API_BASE}/trainers`;

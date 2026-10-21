@@ -2,10 +2,24 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { rateLimit } = require("express-rate-limit");
 
 const router = express.Router();
 
-router.post("/login", async (req, res) => {
+// Gioi han 5 lan thu dang nhap trong 15 phut
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    status: "error",
+    message: "Dang nhap sai qua nhieu lan. Vui long thu lai sau 15 phut."
+  }
+});
+
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
 
@@ -13,11 +27,13 @@ router.post("/login", async (req, res) => {
       typeof email !== "string" ||
       typeof password !== "string" ||
       !email.trim() ||
-      !password
+      !password ||
+      email.length > 254 ||
+      password.length > 128
     ) {
       return res.status(400).json({
         status: "error",
-        message: "Vui lòng nhập email và mật khẩu"
+        message: "Email hoac mat khau khong hop le"
       });
     }
 
@@ -28,7 +44,7 @@ router.post("/login", async (req, res) => {
     if (!adminEmail || !passwordHash || !jwtSecret) {
       return res.status(500).json({
         status: "error",
-        message: "Chưa cấu hình tài khoản Admin"
+        message: "Chua cau hinh tai khoan Admin"
       });
     }
 
@@ -43,19 +59,22 @@ router.post("/login", async (req, res) => {
     if (!emailMatches || !passwordMatches) {
       return res.status(401).json({
         status: "error",
-        message: "Email hoặc mật khẩu không chính xác"
+        message: "Email hoac mat khau khong chinh xac"
       });
     }
 
     const accessToken = jwt.sign(
       { email: adminEmail, role: "admin" },
       jwtSecret,
-      { expiresIn: "2h" }
+      {
+        algorithm: "HS256",
+        expiresIn: "2h"
+      }
     );
 
     return res.json({
       status: "success",
-      message: "Đăng nhập thành công",
+      message: "Dang nhap thanh cong",
       accessToken,
       user: {
         email: adminEmail,
@@ -67,7 +86,7 @@ router.post("/login", async (req, res) => {
 
     return res.status(500).json({
       status: "error",
-      message: "Không thể đăng nhập"
+      message: "Khong the dang nhap"
     });
   }
 });
@@ -79,20 +98,31 @@ router.get("/me", (req, res) => {
   if (!match) {
     return res.status(401).json({
       status: "error",
-      message: "Chưa cung cấp token"
+      message: "Chua cung cap token"
+    });
+  }
+
+  if (!process.env.JWT_SECRET || !process.env.ADMIN_EMAIL) {
+    return res.status(500).json({
+      status: "error",
+      message: "May chu chua cau hinh xac thuc"
     });
   }
 
   try {
     const decoded = jwt.verify(
       match[1],
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { algorithms: ["HS256"] }
     );
 
-    if (decoded.role !== "admin") {
+    if (
+      decoded.role !== "admin" ||
+      decoded.email !== process.env.ADMIN_EMAIL
+    ) {
       return res.status(403).json({
         status: "error",
-        message: "Không có quyền truy cập"
+        message: "Khong co quyen truy cap"
       });
     }
 
@@ -106,7 +136,7 @@ router.get("/me", (req, res) => {
   } catch (error) {
     return res.status(401).json({
       status: "error",
-      message: "Token không hợp lệ hoặc đã hết hạn"
+      message: "Token khong hop le hoac da het han"
     });
   }
 });
